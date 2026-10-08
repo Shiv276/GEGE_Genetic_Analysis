@@ -1,0 +1,26 @@
+# Original downloaded dataset
+/Psco-SNPArray_Data/
+/Psco-SNPArray_Data.zip
+
+# Processed datasets and generated outputs
+/data/
+/outputs/
+
+# Python
+__pycache__/
+*.pyc
+
+# R/RStudio
+.RData
+.Rhistory
+.RDataTmp
+.Rproj.user/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# VS Code
+.vscode/
