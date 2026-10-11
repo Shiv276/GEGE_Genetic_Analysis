@@ -5,7 +5,7 @@ from LD_pipeline import run_plink, PLINK2
 
 
 #PCA
-def run_structure_pca(n_pcs=10):
+def run_structure_pca(n_pcs=30):
     """
     Calculate principal components from the LD-reduced SNP set.
 
@@ -21,7 +21,7 @@ def run_structure_pca(n_pcs=10):
         "--extract",
         PRIMARY_PRUNE_FILE, #Extracting the .in file post-pruning
         "--pca", #Generating a PCA
-        str(n_pcs), #Default var set to 10 - may adjust based on literature and genomic structure
+        str(n_pcs), #Default var set to 10 - may adjust based on literature and genomic structure. UPDATE: Set to 30 to replicate original workflow from the authors
         "--out",
         output_prefix
     ])
@@ -54,7 +54,7 @@ def run_grm():
 
 def main():
 
-    run_structure_pca(n_pcs=10)
+    run_structure_pca(n_pcs=30)
     run_grm()
 
 

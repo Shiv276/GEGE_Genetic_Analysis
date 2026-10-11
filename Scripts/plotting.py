@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import plotly.graph_objects as go
-from config import PROCESSED_DATA, FIGURES, GWAS_STRUCTURE_DIR
+from config import PROCESSED_DATA, FIGURES, GWAS_STRUCTURE_DIR, PHENOTYPE_DIR
 
 
 """
@@ -19,8 +19,10 @@ def load_processed_data():
     froh_meta = pd.read_csv(PROCESSED_DATA / "individual_froh_metadata.csv")
     family_froh = pd.read_csv(PROCESSED_DATA / "family_froh.csv")
     pca = pd.read_csv(GWAS_STRUCTURE_DIR / "pca_with_metadata.csv")
+    pca_eigenvalues = pd.read_csv(GWAS_STRUCTURE_DIR / "pca_eigenvalues.csv")
+    preliminary_phenotypes = pd.read_csv(PHENOTYPE_DIR / "bd_phenotypes_preliminary.csv")
 
-    return df_ne, froh, froh_meta, family_froh, pca
+    return df_ne, froh, froh_meta, family_froh, pca, pca_eigenvalues, preliminary_phenotypes
 
 
 
@@ -221,7 +223,7 @@ def plot_pca_family_slider(pca):
     
         step = dict(
             method="update", #Instructions to update the existing figure
-            args=[{"visible": visible},  {"title": f"PCA — Pedigree family {family}"}], 
+            args=[{"visible": visible},  {"title.text": f"PCA - Pedigree family {family}"}], 
             #visible tells plotly which trace to show/hide based on the visible list just built
             #Title also gets updated based on the current family number so viewers can see the progression across groups.
             label=str(family) #Determines the text that appears on the slider (being the current family number)
@@ -236,9 +238,10 @@ def plot_pca_family_slider(pca):
 
     fig.update_layout(
         title=f"PCA — Pedigree family {families[0]}",
+        font=dict(color="white"),
         xaxis_title="PC1",
         yaxis_title="PC2",
-        template="plotly_white",
+        template="plotly_dark",
         showlegend=False,
         sliders=[dict(active=0, currentvalue=dict(prefix="Family: "), steps=steps)], #Sliders is called on a list because we can have multiple. One is used here. (list of dicts)
         
@@ -258,21 +261,146 @@ def plot_pca_family_slider(pca):
     {"title": "PCA - Pedigree family 3"}
     );
     """
-
+    fig.write_html("PCA_family_slider.html")
     fig.show()
 
 
 
+def plot_pca_scree(pca_eigenvalues, save=False):
+    """
+    Plot variance explained by each principal component.
+
+    Essentially how much genomic variation each successive PC captures?
+    """
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.plot(pca_eigenvalues['PC'], pca_eigenvalues['variance_explained_pct'], marker = 'o')
+    ax.set_xlabel("Principal component")
+    ax.set_ylabel("Variance explained (%)")
+    ax.set_title("Scree plot of genomic PCA")
+    ax.set_xticks(pca_eigenvalues["PC"])
+    ax.grid(alpha=0.3)
+    ax.grid(False)  #Removes gridlines
+
+    plt.tight_layout()
+    
 
 
+def plot_bd_phenotype_qc(preliminary_phenotypes):
+    """
+    Check infection rates and load across experiments.
+    """
 
+    assert len(preliminary_phenotypes) == 892
 
+    # Summarise disease outcomes within each experiment.
+    summary = preliminary_phenotypes.groupby("experiment").agg(
+        frogs=("IID", "size"),
+        infection_pct=("infected_2plus", "mean"),
+        euthanasia_pct=("euthanasia_event", "mean"),
+        median_weeks=("n_measured_weeks", "median")
+    )
+
+    summary[["infection_pct", "euthanasia_pct"]] *= 100
+
+    print("\nDisease outcomes by experiment:")
+    print(summary.round(2))
+
+    print("\nMissing phenotype values:")
+    print(preliminary_phenotypes[
+        ["log10_max_Bd_load", "survival_days", "bc_start", "age_start"]
+    ].isna().sum())
+
+    # Figure 1: Infection rate by experiment.
+    fig, ax = plt.subplots()
+
+    ax.bar(summary.index.astype(str), summary["infection_pct"])
+    ax.set(
+        xlabel="Experiment",
+        ylabel="Infected frogs (%)",
+        title="Bd infection establishment"
+    )
+    ax.set_ylim(0, 100)
+    plt.show()
+
+    # Figure 2: Distribution of maximum observed Bd load.
+    fig, ax = plt.subplots()
+
+    ax.hist(preliminary_phenotypes["log10_max_Bd_load"], bins=35)
+    ax.set(
+        xlabel="log10(maximum zoospore-equivalent load + 1)",
+        ylabel="Number of frogs",
+        title="Maximum observed Bd burden"
+    )
+    plt.show()
+
+    # Figure 3: Follow-up completeness versus survival.
+    fig, ax = plt.subplots()
+
+    for event, label in [
+        (0, "Censored"),
+        (1, "Euthanised")
+    ]:
+        subset = preliminary_phenotypes[preliminary_phenotypes["euthanasia_event"] == event]
+
+        ax.scatter(
+            subset["survival_days"],
+            subset["n_measured_weeks"],
+            alpha=0.35,
+            s=18,
+            label=label
+        )
+
+    ax.set(
+        xlabel="Observed survival duration (days)",
+        ylabel="Weeks with Bd measurements",
+        title="Measurement completeness and survival"
+    )
+    ax.legend()
+    plt.show()
+
+    infection_survival = pd.crosstab(
+    index=[preliminary_phenotypes["experiment"], preliminary_phenotypes["infected_2plus"]],
+    columns=preliminary_phenotypes["euthanasia_event"],
+    margins=True
+)
+
+    infected = preliminary_phenotypes[preliminary_phenotypes["infected_2plus"] == 1]
+
+    fig, ax = plt.subplots()
+
+    for exp in sorted(infected["experiment"].unique()):
+        loads = infected.loc[
+            infected["experiment"] == exp,
+            "log10_max_Bd_load"
+        ]
+
+        ax.hist(
+            loads,
+            bins=25,
+            histtype="step",
+            density=True,
+            label=f"Experiment {int(exp)}"
+        )
+
+    ax.set(
+        xlabel="log10(maximum zoospore-equivalent load + 1)",
+        ylabel="Density",
+        title="Observed maximum Bd burden among infected frogs"
+    )
+
+    ax.legend()
+    plt.show()
+
+    print("\nInfection status versus euthanasia:")
+    print(infection_survival)
 
 
 
 def main():
 
-    df_ne, froh, froh_meta, family_froh, pca = load_processed_data()
+    df_ne, froh, froh_meta, family_froh, pca, pca_eigenvalues, preliminary_phenotypes = load_processed_data()
 
     #plot_historical_ne(df_ne)
     #plot_froh_distribution(froh)
@@ -282,7 +410,9 @@ def main():
     #plot_pca_family_centroids(pca, save=False)
     #plot_pca_by_family(pca, save=False)
     #plot_interactive_pca_family_slider(pca)
-    plot_pca_family_slider(pca)
+    #plot_pca_family_slider(pca)
+    plot_pca_scree(pca_eigenvalues, save=False)
+    #plot_bd_phenotype_qc(preliminary_phenotypes)
     plt.show()
 
 

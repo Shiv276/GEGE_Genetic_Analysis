@@ -146,6 +146,9 @@ def attach_family_metadata(kinship_df, frogs):
     # Attach pedigree information for frog 2.
     pairs = pairs.merge( frog2, on="ID2", how="left", validate="many_to_one")
 
+
+    pairs["same_family"] = pairs["clutch1"] == pairs["clutch2"]
+    
     return pairs
 
 

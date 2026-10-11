@@ -32,6 +32,7 @@ def load_pca():
 
 def load_grm():
 
+    #ID and GRM matrix are detached initially from PLINK output 
     ids = pd.read_csv(GRM_ID_FILE, sep=r"\s+").rename(columns={"#FID": "FID"})
 
     #GRM
@@ -60,9 +61,9 @@ def load_grm():
 #After loading those, I'll need to analyse the PCA to see how it can be applied to the eventual GWAS
 PCA_EIGENVAL_FILE = (GWAS_STRUCTURE_DIR / "population_structure_pca.eigenval")
 
-def load_pca_variance():
+def load_pca_variance(grm):
     """
-    Calculate how much of the genotype variation is explained by each of the 10 principal components.
+    Calculate how much of the genotype variation is explained by each of the 30 principal components.
 
     Basically, PCA identified axes along which the frogs vary genetically.
     Each PC has an associated eigenvalue which indicates how much variation exists along that axis.
@@ -74,40 +75,70 @@ def load_pca_variance():
     #Theres no header so I assign the it a name of 'eigenvalue'
     eigenvalues = pd.read_csv(PCA_EIGENVAL_FILE, header=None, names=["eigenvalue"])
 
-    #Creating a 'PC' column - basically 1-10 for each PC
+    #Creating a 'PC' column - basically 1-30 for each PC
     eigenvalues["PC"] = (range(1, len(eigenvalues) + 1))
 
-    #Proportion of variation captured by each of the PCs (10).
+
+    total_variance = np.trace(grm.to_numpy()) #Gets the trace of the GRM (sum of diagonals)
+
+    #Tells us the proportion of variance that each PC contributes to
+    eigenvalues['variance_explained_pct'] = eigenvalues["eigenvalue"] / total_variance * 100
+
+    eigenvalues["cumulative_variance_pct"] = eigenvalues["variance_explained_pct"].cumsum()
+
+    
+    #Proportion of variation captured by each of the PCs (30).
     #Basically how much genetic variation it captures
-    eigenvalues["relative_variance_pc10"] = (eigenvalues["eigenvalue"] / eigenvalues["eigenvalue"].sum())
+    eigenvalues["relative_variance_pc30"] = (eigenvalues["eigenvalue"] / eigenvalues["eigenvalue"].sum())
 
     #Same effect-size but as a percentage. Helps figure out how much variation is explained by each PC.
-    eigenvalues["relative_variance_pct_pc10"] = (eigenvalues["relative_variance_pc10"] * 100)
+    eigenvalues["relative_variance_pct_pc30"] = (eigenvalues["relative_variance_pc30"] * 100)
 
     return eigenvalues
 
 
-def save_results(pca, variance):
+
+
+
+def save_results(pca, pca_eigenvalues):
     """
     Save analysis-ready PCA outputs for plotting.
 
-    pca: One row per frog containing PC1-PC10 plus clutch, zoo and F_ROH metadata.
-    variance: Eigenvalues and relative contribution of each PC among the first 10 PCs.
+    pca: One row per frog containing PC1-PC30 plus clutch, zoo and F_ROH metadata.
+    variance: Eigenvalues and relative contribution of each PC among the first30 PCs.
     """
     pca.to_csv(GWAS_STRUCTURE_DIR / "pca_with_metadata.csv", index=False)
-    variance.to_csv(GWAS_STRUCTURE_DIR / "pca_eigenvalues.csv", index=False)
+    pca_eigenvalues.to_csv(GWAS_STRUCTURE_DIR / "pca_eigenvalues.csv", index=False)
 
 
 def main():
 
     pca = load_pca()
     grm, ids = load_grm()
-    variance = load_pca_variance()
+    pca_eigenvalues = load_pca_variance(grm)
 
     print("PCA relative variance:")
-    print(variance[["PC", "eigenvalue", "relative_variance_pct_pc10"]])
+    print(pca_eigenvalues[["PC", "eigenvalue", "relative_variance_pct_pc30"]])
 
-    save_results(pca,variance)
+    print('-' * 50)
+
+
+    """
+    Since the GRM and PCA were made sing the same pruned dataset in PLINK2, we know that the trace of the GRM (Tr(K)) or sum of diagonals
+    is equal to the sum of all eigenvalues in PCA.
+
+    This allows us to calculate how much of the variance each of our PCs contribute.
+    """
+
+    total_variance = np.trace(grm.to_numpy())
+    top30_variance = pca_eigenvalues["eigenvalue"].sum()
+
+    print(f"GRM trace: {total_variance:.4f}")
+    print(f"First 30 eigenvalues: {top30_variance:.4f}")
+    print(f"Variance captured: {top30_variance / total_variance * 100:.2f}%")
+
+
+    save_results(pca, pca_eigenvalues)
 
 
 
